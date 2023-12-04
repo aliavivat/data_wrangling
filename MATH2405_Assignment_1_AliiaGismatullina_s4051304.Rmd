@@ -1,0 +1,263 @@
+---
+title: "MATH2405 TP4, 2023"
+author: "Aliia Gismatullina s4051304"
+subtitle: Assignment 1
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf: default
+---
+
+## **Setup**
+
+```{r, echo = TRUE, warnings = FALSE}
+library(readr) 
+library(foreign) 
+library(rvest) 
+library(knitr) 
+library(dplyr)
+
+```
+
+### **Importing Data**
+```{r}
+df <- read.csv("insurance.csv")
+
+head(df)
+```
+### **Data Description**
+
+This dataset is sourced from Kaggle website: https://www.kaggle.com/datasets/willianoliveiragibin/healthcare-insurance and includes data that outlines the interactions between individual characteristics (such as age, gender, BMI, family size, and smoking habits), geographic factors, and how these interactions affect medical insurance costs. 
+
+It can be used to investigate how these characteristics affect insurance costs and to develop predictive models for the purpose of calculating healthcare expenses.
+
+These are the descriptions of the variables:
+
+* Age: The age of the insured.
+
+* Sex: The insured's gender (male or female).
+
+* Body Mass Index, or BMI, is a weight-and-height-based indicator of body fat.
+
+* Children: The total number of insured dependents.
+
+* Smoker: Whether or not the insured smokes.
+
+* Region: The coverage area's geographic location.
+
+* Charges: The insured person's share of the medical insurance premiums.
+
+
+
+### **Inspecting dataset and variables**
+
+
+```{r}
+# Let's see the dimensions using dim() function:
+
+dim(df)
+
+```
+
+The dataset comprises 1338 observations, each with information on 7 different variables.
+
+
+```{r}
+# Next, I am using the str() function in order to find out the data types:
+
+str(df)
+
+```
+
+Fore a better analysis it is essential to convert some of the character variables into factors:
+
+* "Sex" - as there is only 2 categories: male and female;
+```{r}
+df$sex <- as.factor(df$sex)
+```
+
+
+* "Smoker" variable is a character and has the following levels:
+```{r}
+unique(df$smoker)
+```
+We can see that the "Smoker" variable has only "yes" or "no" observations, so it makes sense to convert it to logical: 
+```{r}
+df$smoker <- ifelse(df$smoker == "yes", TRUE,
+                    ifelse(df$smoker == "no", FALSE, NA))
+```
+
+* "Region" variable should remain as a character.
+
+
+```{r}
+# Let's view the changes:
+str(df)
+```
+
+
+```{r}
+# Column names in our data frame:
+
+colnames(df)
+```
+The column names seem descriptive, which is excellent, as descriptive column names enhance code readability. In addition, I believe it is valid to leave all the column names in lowercase for overall consistency.
+
+
+```{r}
+# Let's filter factors and see the levels:
+
+fac <- Filter(is.factor, df)
+sapply(fac, levels)
+```
+To separate different factor data types and report the factor levels of each, I am using the filter() command.
+
+
+
+### **Tidy data** 
+
+```{r}
+head(df)
+```
+
+The data indeed is in a tidy format based on the structure and adherence to tidy data principles:
+
+1. Columns represent variables: each column represents a different variable: "age", "sex", "bmi", "children", "smoker", "region" and "charges".
+
+2. Rows represent observations: each row indicates a distinct observation or individual.
+
+3. Observational units in a single table: the data contains information about individuals, and all relevant details are included in the same table.
+
+4. Variable names are descriptive: variable names are clear and descriptive, providing information about the content of each column.
+
+5. Data types are consistent: the data types are appropriate for each variable: integer ("age," "children"), factor ("sex," "region"), double ("bmi", "charges"), and logical ("smoker").
+
+
+### **Summary Statistics** 
+```{r}
+summary(df)
+```
+In order to get the summary statistics of numeric variables, which in this case are: age, bmi, children, charges, grouped by a categorical variable: region, the group_by() function has been used to group the data by the "region" and then calculates mean, median, minimum, maximum and standard deviation for each numeric variable within each region.
+
+```{r}
+
+summary_stats <- df %>%
+  group_by(region) %>%
+  summarise(
+    mean_age = mean(age),
+    median_age = median(age),
+    min_age = min(age),
+    max_age = max(age),
+    sd_age = sd(age),
+    
+    mean_bmi = mean(bmi),
+    median_bmi = median(bmi),
+    min_bmi = min(bmi),
+    max_bmi = max(bmi),
+    sd_bmi = sd(bmi),
+    
+    mean_children = mean(children),
+    median_children = median(children),
+    min_children = min(children),
+    max_children = max(children),
+    sd_children = sd(children),
+    
+    mean_charges = mean(charges),
+    median_charges = median(charges),
+    min_charges = min(charges),
+    max_charges = max(charges),
+    sd_charges = sd(charges)
+  )
+
+print(summary_stats)
+
+```
+
+
+### **Create a list**
+
+To create a list of numeric values for the categorical value "region", I will create "categories" value with all the unique "region" levels, use as.numeric() and factor() functions as follows:
+
+```{r}
+
+categories <- unique(df$region)
+
+numeric_values <- as.numeric(factor(df$region, levels = categories))
+
+numeric_values
+
+```
+
+In order to find out which region is represented by which number, I will use the levels() function together with the factor() function.
+
+```{r}
+# Outputting the unique categories of the original variable:
+regions <- levels(factor(df$region))
+
+# Creating a data frame to display the mapping:
+mapping_df <- data.frame(numeric_value = numeric_values, region = regions[numeric_values])
+
+head(mapping_df)
+```
+Above I have created a new dataset (mapping_df) that shows the mapping between the numeric values and the original categories:
+* 1 is northeast;
+* 2 is northwest;
+* 3 is southeast;
+* 4 is southwest.
+
+
+### **Join the list**
+
+To join the list created earlier, I must first determine which common variables to use in two datasets (df - the original dataset, and mapping_df - the one with numeric values), with the help of intersect() function.
+```{r}
+intersect(df %>% names(), 
+          mapping_df %>% names())
+```
+So the "region" variable is common for these two datasets. Then it is necessary to check that the two "region" variable classes match. 
+
+```{r}
+cat("df$region:", class(df$region), "\n")
+cat("mapping_df$region:", class(mapping_df$region), "\n")
+```
+
+The classes do match, so I can proceed to joining the data frames by the "region" variable. 
+```{r}
+result_df <- df %>% left_join(mapping_df, by = "region")
+
+head(result_df)
+```
+
+### **Subsetting (10 observations)**
+
+Creating a new data frame "subset1" and retaining all of the variable columns, while only subsetting the first 10 observations.
+```{r}
+subset1 <- result_df[1:10, ]
+
+# Converting the subset1 to a matrix
+subset_matrix <- as.matrix(subset1)
+
+str(subset_matrix)
+```
+We can observe that the subset_matrix is a character matrix from the output above. 
+
+The original dataset, result_df, contained a combination of character and numeric data types, which is why it turned into a character matrix. Every element in a matrix that is subset of the data frame must have the same data type. To preserve homogeneity, all elements are changed to characters since characters are more inclusive and can hold both text and numbers.
+
+
+### **Subsetting (first and last variable)**
+
+```{r}
+ # Subsetting dataset, keeping the first and the last variables; saving as an R object:
+
+subset2 <- result_df[, c(1, ncol(result_df))]
+
+save(subset2, file = "subset2.RData")
+
+head(subset2)
+```
+The code above selects the first and the last variable of result_df using the [, c(1, ncol(result_df))] syntax. After that, the “subset2” dataset has been saved as an R Object “subset2.RData” in the working folder.
+
+
+### **References** 
+
+WILLIAN OLIVEIRA GIBIN, WILLIAN OLIVEIRA GIBIN, updated in October 2023, Healthcare Insurance. Available at: https://www.kaggle.com/datasets/willianoliveiragibin/healthcare-insurance
