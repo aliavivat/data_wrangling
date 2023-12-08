@@ -1,0 +1,763 @@
+---
+title: "Data Wrangling Assessment Task 3: Dataset challenge"
+author: "Aliia Gismatullina s4051304"
+subtitle: 
+output: 
+  word_document: default
+  html_document:
+    css: style.css
+    df_print: paged
+  pdf: default
+---
+
+### Assessment Brief
+
+For this assessment, the task at hand involves producing an R markdown report and an accompanying overview presentation, providing an opportunity to refine proficiency in R programming. Moreover, it necessitates the articulation of well-founded justifications and explanations for the processes implemented.
+
+Building on the foundation laid in previous assessments, the primary objective is to transform disorderly datasets, strategically addressing challenges such as missing values and outliers. This assignment aligns directly with several key course learning outcomes (RMIT University, School of Science, 2023):
+
+* Utilise leading open-source software, R, to address and resolve data wrangling tasks.
+* Select, perform, and justify data validation processes for raw datasets to satisfy quality requirements.
+* Apply and evaluate the best practice standards of Tidy Data Principles.
+* Critically analyse data integration procedures for combining data with different types and structures into a suitable format.
+
+These outcomes serve as a framework for evaluating the success and effectiveness of the applied methodologies in this data pre-processing task.
+
+
+## Setup 
+
+```{r, message=FALSE}
+library(tidyverse)
+library(readr)
+library(readxl)
+library(stringr)
+library(lubridate)
+library(reshape2)
+library(patchwork)
+library(imputeTS)
+library(car)
+library(gridExtra)
+library(pscl)
+```
+
+
+## Data Description 
+
+For this Assessment, I am working with two datasets prepared by The Bureau of Transport and Regional Economics (BTRE). These datasets contain time series information on international airlines operating to and from Australia.
+
+The first dataset covers the years 1999 to 2003, while the second spans from 2004 to 2008. I'll be merging these two separate datasets into a single comprehensive data frame. This combined dataset will capture data on international airline flights to and from Australia, providing a more extensive dataset for analysis covering the period from 1999 to 2008.
+
+The data includes passenger counts, freight weights, and mail movements, as well as flight details, available seats, and seat utilization. The information is broken down by airline, country, and city for easier analysis.
+
+The variables are as following:
+				
+*	Month	- the observation month;
+*	Scheduled Operator - International airline name;
+* Country to/from	- Country of port (inbound/outbound);	
+*	Passengers In	- Passengers flying to Australia;
+*	Freight In	- Freight inbound to Australia in tonnes;	
+*	Mail In	- Mail inbound to Australia in tonnes;
+*	Passengers Out - Passengers flying out of Australia;
+*	Freight Out	- Freight outbound from Australia in tonnes;
+*	Mail Out -	Mail outbound from Australia in tonnes;
+* Year - the observation year.
+
+BTRE (2023). International airline activity Table1 2004to2008 web.xls. [ReadMe], B16-B24. Available at: https://www.bitre.gov.au/publications/ongoing/international_airline_activity-time_series.
+
+
+To start with, I will import the MS Excel files. 
+
+```{r}
+# To import the data, I will use the 'readxl' package.
+
+df1 <- read_excel("data/International_airline_activity_Table1_99to03.xls", 
+    sheet = "Data")
+df2 <- read_excel("data/International_airline_activity_Table1_2004to2008_web.xls", 
+    sheet = "Data")
+
+head(df1)
+head(df2)
+```
+As we can see, the datasets have 9 common variables out of 10:
+
+* 'df1' has a CalYear;
+* 'df2' has the Year.
+
+In fact, they mean the same, only the naming varies. Before proceeding with the merging, I find it reasonable to rename the 'CalYear' variable in df1 to 'Year' to match with the df2.
+
+```{r}
+# For renaming a variable, I will use 'rename()' function from dplyr package.
+
+df1 <- df1 %>% rename(Year = CalYear)
+head(df1)
+```
+
+
+Next, I will join these 2 datasets into 1 and name it "airline_df", using the 'full_join' function. A full outer join returns all rows from both data frames, matching them where possible and filling in missing values with NA where there is no match. This ensures that all the information is retained from both datasets.
+
+
+```{r}
+# I will use 'full_join' function, as I need to include all rows from both datasets. 
+
+airline_df <- full_join(df1, df2, by = join_by(Month, `Scheduled Operator`, `Country to/from`, `Passengers In`, `Freight In`, `Mail In`, `Passengers Out`, `Freight Out`, `Mail Out`, Year))
+
+head(airline_df)
+```
+
+## Understanding and Tidying the Data
+
+Now, let's examine and comprehend the resultant dataset. Initially, I'd like to ascertain the total count of variables, observations, and data types. The most effective method to obtain this information is by employing the str() function.
+
+```{r}
+str(airline_df)
+```
+### Tidy Data Principles
+
+##### 1. Overview 
+Subsequently, there are 11,966 observations and 10 variables. The initial observation reveals that the data does not adhere to the Tidy Data Principles. Let's go step by step:
+
+* "Each variable forms a column": 
+The first variable "Month" contains both year and month values, which is against the Tidy Data Principles. To solve this, we can retain only the month values and eliminate the year component, considering the presence of a dedicated "Year" variable in the dataset.
+
+* "Each observation forms a row": 
+Consequently, after we modify the "Month" variable as mentioned above, this Principle will be valid, as the rest of the rows represent a unique observation.
+
+* "Each type of observational unit forms a table": 
+Data pertaining to a specific observation is contained within its own table, avoiding mixing multiple types of data within the same table.
+
+* "Variable names are informative and not too long": 
+Variable names should be clear, concise, and descriptive - in our case, the variable names require formatting, as there are spaces " " and special characters "/" present in the dataset. I will address this in the next step.
+
+* "Data is organized to facilitate analysis": 
+The structure of the dataset should be optimized for analysis, with clear relationships between variables and observations. In our case, almost all the variable types are characters, instead of numeric types. To adhere to Tidy Data Principles, these should be converted to numeric types (integers or doubles) since they represent numerical quantities.
+
+
+##### 2. Variable names
+Handling spaces " " in variable names can pose challenges during analysis. I propose changing all spaces to underscores "_" for consistency and ease of analysis.
+
+```{r}
+# Replacing spaces with underscores in variable names. Here, gsub(" ", "_", .) represents a regular expression substitution; and 'everything()' represents modification of the names in all columns.
+
+airline_df <- airline_df %>%
+  rename_with(~ gsub(" ", "_", .), everything())
+```
+
+Additionally, a variable "Country_to/from" could potentially cause issues in certain situations due to a special charachter "/", and it might be more convenient to rename it to "Country_To_From".
+
+```{r}
+# Rename the specific variable "Country_to/from" to "Country_To_From"
+airline_df <- airline_df %>%
+  rename("Country_To_From" = "Country_to/from")
+
+head(airline_df)
+```
+As a result, we have consistent and clear variable names.
+
+
+##### 3. Variable Types
+All the variable types are currently set as characters, requiring modification. In particular:
+
+* Month - (e.g. 1999-01-01) encompasses both year and month values, along with the first day of each month. Furthermore, it is presented in 'POSIXct' format, specifically designed for precise representation of date and time values. In our context, this level of precision is unnecessary, as we require solely the month value without the need for such detailed accuracy. And, as I mentioned above, the separate 'Year' variable already exists.
+
+```{r}
+# Extracting the month value from a POSIXct date-time object using 'month' function from the 'lubridate' package. 
+
+airline_df$Month <- month(airline_df$Month)
+
+unique(airline_df$Month)
+str(airline_df$Month)
+```
+The output above shows that the values have been successfully extracted. 
+
+When it comes to the data type of the variable "Month", I believe it represents a categorical aspect of the data, so converting it to a factor can be a good choice. Factors can help performing analyses that treat the months as distinct categories, such as seasonal patterns.
+
+```{r}
+airline_df$Month <- factor(airline_df$Month)
+str(airline_df$Month)
+```
+
+
+* Scheduled_Operator, Country_To_From - can remain as a character, as it includes strings of names.
+
+
+* Passengers_In, Passengers_Out - should be converted into integers, as they represent the whole numbers of passengers. To achieve this, I will use the 'str_detect' function from the 'stringr' package, where:
+
+  * "str_detect(Passengers_In, "\\D")" checks if there are any non-digit characters in the "Passengers_In" column;
+  * The condition "is.na(Passengers_In) | str_detect(Passengers_In, "\\D")" checks if the value is either NA or contains non-digit characters.
+  * If the condition is true, it replaces the value with NA using "ifelse".
+
+```{r}
+# Using the 'str_detect' function from the 'stringr' package.
+
+airline_df <- airline_df %>%
+  mutate(Passengers_In = as.integer(ifelse(is.na(Passengers_In) | str_detect(Passengers_In, "\\D"), NA, Passengers_In)),
+         Passengers_Out = as.integer(ifelse(is.na(Passengers_Out) | str_detect(Passengers_Out, "\\D"), NA, Passengers_Out)))
+
+summary(airline_df$Passengers_In)
+summary(airline_df$Passengers_Out)
+```
+
+We can see that the variables have been successfully converted into integers, and there are over 2000 NA's in them.
+
+
+* Freight In, Freight Out, Mail In, Mail Out - should be transformed into double data types, considering the given values are in tonnes. The best way to ensure that only valid numeric values are converted to double, and non-numeric or invalid values are replaced with NA, is using regular expressions.
+
+  * The regular expression "^\\d+\\.?\\d*$" checks if the value is a non-negative decimal number (integer or floating).
+  * The condition "is.na(Freight_In) | !grepl("^\\d+\\.?\\d*$", Freight_In)" checks if the value is either NA or does not match the specified pattern.
+  * If the condition is true, it replaces the value with NA using "ifelse".
+
+```{r}
+# Converting the variables using "as.double" function.
+
+airline_df <- airline_df %>%
+  mutate(Freight_In = as.double(ifelse(is.na(Freight_In) | !grepl("^\\d+\\.?\\d*$", Freight_In), NA, Freight_In)),
+         Freight_Out = as.double(ifelse(is.na(Freight_Out) | !grepl("^\\d+\\.?\\d*$", Freight_Out), NA, Freight_Out)),
+         Mail_In = as.double(ifelse(is.na(Mail_In) | !grepl("^\\d+\\.?\\d*$", Mail_In), NA, Mail_In)),
+         Mail_Out = as.double(ifelse(is.na(Mail_Out) | !grepl("^\\d+\\.?\\d*$", Mail_Out), NA, Mail_Out)))
+
+summary(airline_df[c("Freight_In", "Freight_Out", "Mail_In", "Mail_Out")])
+```
+The grouped summary above confirms the successful conversion of the variables.
+
+
+* Year - should be a factor variable, and needs to be ordered, as it explicitly represents the ordinal nature of the years (1999-2008). By converting it to a factor and ordering the levels, it is specifying that the years have a meaningful order, rather than treating them as nominal categories.
+
+Let's examine the summary for the 'Year' variable to confirm its range spanning from 1999 to 2008.
+
+```{r}
+summary(airline_df$Year)
+```
+
+I will use the 'mutate()' function from the 'dplyr' package to convert Year variable into a factor with levels.
+
+```{r}
+# Converting 'Year' to a factor and order the levels
+
+airline_df <- airline_df %>% 
+  mutate(Year = factor(Year, levels = unique(Year), ordered = TRUE))
+
+str(airline_df$Year)
+summary(airline_df$Year)
+```
+As a result, we have the Year variable with 10 levels (from 1999 to 2008).
+
+
+Let's now review the final data types we have successfully achieved through the above modifications.
+
+```{r}
+str(airline_df)
+```
+Consequently, the characher variables (Freight_In, Mail_In, Freight_Out, and Mail_Out) have been successfully parsed to double data types; "Passengers_In", "Passengers_Out" - to integers; the "Month" values have been extracted and labeled; and the "Year" variable is represented as an ordinal factor with 10 levels corresponding to the years from 1999 to 2008.
+
+```{r}
+summary(airline_df)
+```
+
+The summary above provides a quick snapshot of the distribution and characteristics of the data, where all the variables are in the correct type and all the Tidy Data Principles have been accomplished. 
+
+
+## Manipulating Data
+
+In this step of the assessment, I am required to create or mutate at least one variable from the existing ones. In alignment with this requirement, I propose to create a new variable named "Total_Passengers_Carried." This variable will signify the sum of passengers carried by the airline for a specific month, encompassing both inbound and outbound passenger movements.
+
+```{r}
+# As the variables are now the correct type (integer), we can perform a basic mathematical operation.
+
+airline_df <- airline_df %>%
+  mutate(Total_Passengers_Carried = Passengers_In + Passengers_Out)
+
+summary(airline_df$Total_Passengers_Carried)
+```
+
+Following this, a similar methodology can be applied to generate another variable, "Total_Freight_Carried." This variable will encapsulate the aggregate sum of freight, measured in tonnes, encompassing both inbound and outbound shipments carried by the airline for a given month.
+
+```{r}
+airline_df <- airline_df %>%
+  mutate(Total_Freight_Carried = Freight_In + Freight_Out)
+
+summary(airline_df$Total_Freight_Carried)
+head(airline_df)
+```
+
+As a result, there are now a total of 12 variables, each in the correct data type. The dataset is structured and organized, with each variable allocated to its own column and each observation to its own row.
+
+
+
+##	Scan I. Missing Values
+
+To scan all variables for missing values and inconsistencies in the dataset, I will use the following steps:
+
+1. Firstly, I will use the 'summary' function to get a quick overview of missing values in each variable:
+
+```{r}
+summary(airline_df)
+```
+
+2. To get the total count of missing values for each variable, I will use the 'colSums()' function.
+
+```{r}
+colSums(is.na(airline_df))
+```
+
+Here we can see that all the numeric variables have big amounts of missing values:
+
+* Month: No missing values (0).
+* Scheduled_Operator: No missing values (0).
+* Country_To_From: No missing values (0).
+* Passengers_In: 2376 missing values.
+* Freight_In: 1017 missing values.
+* Mail_In: 1017 missing values.
+* Passengers_Out: 2297 missing values.
+* Freight_Out: 752 missing values.
+* Mail_Out: 752 missing values.
+* Year: No missing values (0).
+* Total_Passengers_Carried: 2399 missing values.
+* Total_Freight_Carried: 1769 missing values.
+
+Addressing a large number of missing values requires careful consideration and the chosen approach should align with the nature of the analysis. Several methods can be considered:
+
+##### 1. Imputation:
+
+Estimating or predicting missing values based on the observed data - mean or median imputation, as well as regression imputation. Given the prevalence of missing values in our dataset, it's crucial to assess the impact of missingness on the analysis. We can employ imputation methods and compare the results with and without imputation. Consistent results may indicate that missing values are missing completely at random (MCAR).
+
+
+##### 2. Removing Rows with Missing Values:
+
+It is reasonable to consider the removal of rows where missing values are simultaneously present in 4 or more variables (more than half). This decision is justified by the understanding that observations with extensive missing data across multiple variables may not contribute significantly to the valuable information essential for our analysis.
+
+```{r}
+rows_to_delete <- which(rowSums(is.na(airline_df)) > 4)
+
+# Deleting rows
+airline_df <- airline_df[-rows_to_delete, ]
+
+# Resetting row names
+rownames(airline_df) <- NULL
+
+summary(airline_df)
+
+colSums(is.na(airline_df))
+```
+After deleting these rows, that were not informative for the analysis, we can see that there are now 630 NA's in Passengers_In, 625 NA's in Passengers_Out and 630 NA's in Total_Passengers_Carried left to further deal with. 
+
+
+##### 3. Creating a Missingness Indicator:
+
+Creating a binary indicator variable that flags whether a value is missing. This can be useful for understanding the impact of missingness on the analysis.
+
+```{r}
+# Creating a missingness indicator for the numeric variables
+airline_df$Passengers_Out_missing <- ifelse(is.na(airline_df$Passengers_Out), 1, 0)
+
+airline_df$Passengers_In_missing <- ifelse(is.na(airline_df$Passengers_In), 1, 0)
+
+airline_df$Total_Passengers_Carried_missing <- ifelse(is.na(airline_df$Total_Passengers_Carried), 1, 0)
+
+head(airline_df)
+```
+
+Here I would like to filter out and remove the rows, where Passengers_Out and Passengers_In have missing values, and at the same time Freight_In, Freight_Out, Mail_In and Mail_Out equal 0, as these rows will not be informative as well. 
+
+```{r}
+airline_df <- airline_df %>%
+  filter(!(Passengers_Out_missing == 1 & Passengers_In_missing == 1 & Total_Passengers_Carried_missing == 1 & 
+             Freight_In == 0 & Freight_Out == 0 & Mail_In == 0 & Mail_Out == 0))
+
+colSums(is.na(airline_df))
+```
+
+Now we can further investigate the relationship of these variables and take necessary actions to deal with the remaining missing values. 
+
+
+##### 4. Identifying errors:
+
+First, I would like to visualize these variables in correlation.
+
+```{r}
+# Scatter plot for Passengers_In vs Passengers_Out
+ggplot(airline_df, aes(x = Passengers_In, y = Passengers_Out)) +
+  geom_point() +
+  labs(title = "Passengers_In vs Passengers_Out",
+       x = "Passengers_In", y = "Passengers_Out")
+
+# Scatter plot for Passengers_In vs Total_Passengers_Carried
+ggplot(airline_df, aes(x = Passengers_In, y = Total_Passengers_Carried)) +
+  geom_point() +
+  labs(title = "Passengers_In vs Total_Passengers_Carried",
+       x = "Passengers_In", y = "Total_Passengers_Carried")
+
+# Scatter plot for Passengers_Out vs Total_Passengers_Carried
+ggplot(airline_df, aes(x = Passengers_Out, y = Total_Passengers_Carried)) +
+  geom_point() +
+  labs(title = "Passengers_Out vs Total_Passengers_Carried",
+       x = "Passengers_Out", y = "Total_Passengers_Carried")
+```
+In the scatter plot we can clearly see the relationship of the variables, suggesting that they move together in a similar fashion, and changes in one are associated with changes in the others. However, upon analyzing the dataset I found that the Regression Imputation cannot be performed when dealing with missing values, as all 3 of them have the NA's on the same rows simultaneously. Therefore, I came to a conclusion that replacing the missing values with the mean values of the variables is the most suitable solution.
+
+
+However, before calculating the mean values, it is essential to check if there are any outliers in these variables, as it may significantly affect the mean values. Let's take a quick glance at the data summary.
+
+```{r}
+# Calculating summary statistics for Passengers_In
+summary_passengers_in <- summary(airline_df$Passengers_In)
+
+# Calculating summary statistics for Passengers_Out
+summary_passengers_out <- summary(airline_df$Passengers_Out)
+
+# Calculating summary statistics for Total_Passengers_Carried
+summary_total_passengers_carried <- summary(airline_df$Total_Passengers_Carried)
+
+# Displaying the results
+print("Summary Statistics for Passengers_In:")
+print(summary_passengers_in)
+
+print("Summary Statistics for Passengers_Out:")
+print(summary_passengers_out)
+
+print("Summary Statistics for Total_Passengers_Carried:")
+print(summary_total_passengers_carried)
+```
+
+When examining the maximum values of the 'Passengers_In' a notable figure of 134,894 and 'Passengers_Out' max value of 142,993 caught my attention. I will select these values and analyse them. 
+
+```{r}
+max_passengers_in_row <- airline_df %>%
+  filter(Passengers_In == max(Passengers_In, na.rm = TRUE))
+
+max_passengers_out_row <- airline_df %>%
+  filter(Passengers_Out == max(Passengers_Out, na.rm = TRUE))
+
+print(max_passengers_in_row)
+print(max_passengers_out_row)
+```
+
+As we can see on the output, the maximum value of 'Passengers_In' happened in June, 2008. The research on the official Singapore Airlines website revealed that in 2008, the airline documented a '6.7% year-on-year growth' in passenger carriage (Singapore Company Registration, 2008). Notably, July 2008 coincided with the introduction of Airbus A380 aircraft. Subsequently, the maximum value of 'Passengers_Out' 142,993 happened in December, 2008, the same year with the above. In conclusion, the increase in passenger numbers in this case is logical. 
+
+
+As we proved that the max values are valid, we can continue with the scanning. For the next step, I would like to create histograms for these 3 variables and visually see the distribution of values. 
+
+```{r}
+# Histogram for Passengers_In
+hist_plot_passengers_in <- ggplot(airline_df, aes(x = Passengers_In)) +
+  geom_histogram(binwidth = 500, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Passengers_In")
+
+# Plot for Passengers_Out
+hist_plot_passengers_out <- ggplot(airline_df, aes(x = Passengers_Out)) +
+  geom_histogram(binwidth = 500, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Passengers_Out")
+
+# Histogram for Total_Passengers_Carried
+hist_plot_total_passengers_carried <- ggplot(airline_df, aes(x = Total_Passengers_Carried)) +
+  geom_histogram(binwidth = 500, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Total_Passengers_Carried")
+
+# Display the plots
+grid.arrange(hist_plot_passengers_in, hist_plot_passengers_out, hist_plot_total_passengers_carried, ncol = 2)
+
+```
+
+The histograms look almost identical, right-skewed, and contain a lot of 0 values, so some data transformation can be relevant here to gain insights into the distribution of the data.
+
+Based on the visualization above, replacing the missing values with the mean values does not seem to be the right approach, as the NA amounts are quite large - 497, 492 and 497. If we simply replace them with mean values (as an example, for 'Passengers_In', replacing 497 NA values with 9962), it will significantly affect the dataset and introduce bias. 
+
+In such a case, alternative imputation methods, such as K-Nearest Neighbors (KNN) imputation, might be more suitable, keeping in mind that the consecutive values have a linear relationship between them, as we proved earlier. To continue with the selected method, I will use Data Transformation technique as below.
+
+
+##### 5. Data Transformation:
+
+I will apply log transformations to the 3 variables to reduce right-skewness. 
+
+```{r}
+# Log-transforming the variables
+airline_df$log_Passengers_In <- log1p(airline_df$Passengers_In)
+airline_df$log_Passengers_Out <- log1p(airline_df$Passengers_Out)
+airline_df$log_Total_Passengers_Carried <- log1p(airline_df$Total_Passengers_Carried)
+
+# Histogram for log-transformed Passengers_In
+ggplot(airline_df, aes(x = log_Passengers_In)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for log-transformed Passengers_In")
+
+# Histogram for log-transformed Passengers_Out
+ggplot(airline_df, aes(x = log_Passengers_Out)) +
+  geom_histogram(binwidth = 0.1, fill = "green", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for log-transformed Passengers_Out")
+
+# Histogram for log-transformed Total_Passengers_Carried
+ggplot(airline_df, aes(x = log_Total_Passengers_Carried)) +
+  geom_histogram(binwidth = 0.1, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for log-transformed Total_Passengers_Carried")
+
+```
+
+The transformed values look much clearer and provide more insights compared to the values prior to transformation.
+
+Next, I will implement a K-Nearest Neighbors method, where it considers the values of the nearest neighbors to impute missing values.
+
+```{r}
+# Imputing missing values using linear interpolation
+airline_df$log_Passengers_In <- na_interpolation(airline_df$log_Passengers_In, option = "linear")
+airline_df$log_Passengers_Out <- na_interpolation(airline_df$log_Passengers_Out, option = "linear")
+airline_df$log_Total_Passengers_Carried <- na_interpolation(airline_df$log_Total_Passengers_Carried, option = "linear")
+
+
+# Histogram for log_Passengers_In after imputation
+hist_imputed_passengers_in <- ggplot(airline_df, aes(x = log_Passengers_In)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for log_Passengers_In after Imputation")
+
+# Histogram for log_Passengers_Out after imputation
+hist_imputed_passengers_out <- ggplot(airline_df, aes(x = log_Passengers_Out)) +
+  geom_histogram(binwidth = 0.1, fill = "green", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for log_Passengers_Out after Imputation")
+
+# Histogram for log_Total_Passengers_Carried after imputation
+hist_imputed_total_passengers_carried <- ggplot(airline_df, aes(x = log_Total_Passengers_Carried)) +
+  geom_histogram(binwidth = 0.1, fill = "orange", color = "black", alpha = 0.7) +
+  labs(title = "Histogram for log_Total_Passengers_Carried after Imputation")
+
+# Displaying the histograms
+grid.arrange(hist_imputed_passengers_in, hist_imputed_passengers_out, hist_imputed_total_passengers_carried, ncol = 2)
+
+```
+In the histograms now we see a positive outcome of K-Nearest Neighbors (KNN) method successfully handled missing values without significantly altering the distribution of the variables. This suggests that the imputed values align well with the patterns observed in the existing data.
+
+
+```{r}
+print("Summary Statistics for log_Passengers_In:")
+summary(airline_df$log_Passengers_In)
+
+print("Summary Statistics for log_Passengers_Out:")
+summary(airline_df$log_Passengers_Out)
+
+print("Summary Statistics for log_Total_Passengers_Carried:")
+summary(airline_df$log_Total_Passengers_Carried)
+```
+As we can see on the output, we have successfully eliminated the missing values in log transformed variables. 
+
+
+##	Scan II. Outliers
+
+First of all, I would like to check the categorical variables for unique values and identify any inconsistencies, using the 'unique' function.
+
+```{r}
+unique(airline_df$Scheduled_Operator)
+unique(airline_df$Country_To_From)
+```
+
+The unique values for both of the variables look relevant, so we can continue with the numerical variables. 
+
+As we already scanned, identified and transformed the 3 numeric variables: 'Passengers_In', 'Passengers_Out' and 'Total_Passengers_Carried', I will do the similar to the rest of the numeric variables: 
+
+* Freight_In,
+* Freight_Out,
+* Total_Freight_Carried,
+* Mail_In,
+* Mail_Out.
+
+```{r}
+# Creating histograms for Freight_In, Freight_Out, Total_Freight_Carried, Mail_In, Mail_Out.
+histogram_freight_in <- ggplot(airline_df, aes(x = Freight_In, fill = "blue")) +
+  geom_histogram(binwidth = 10, color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Freight_In")
+
+histogram_freight_out <- ggplot(airline_df, aes(x = Freight_Out, fill = "green")) +
+  geom_histogram(binwidth = 10, color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Freight_Out")
+
+histogram_total_freight_carried <- ggplot(airline_df, aes(x = Total_Freight_Carried, fill = "orange")) +
+  geom_histogram(binwidth = 10, color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Total_Freight_Carried")
+
+histogram_mail_in <- ggplot(airline_df, aes(x = Mail_In, fill = "purple")) +
+  geom_histogram(binwidth = 10, color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Mail_In")
+
+histogram_mail_out <- ggplot(airline_df, aes(x = Mail_Out, fill = "red")) +
+  geom_histogram(binwidth = 10, color = "black", alpha = 0.7) +
+  labs(title = "Histogram for Mail_Out")
+
+# Displaying the histograms.
+grid.arrange(histogram_freight_in, histogram_freight_out, histogram_total_freight_carried, 
+             histogram_mail_in, histogram_mail_out, ncol = 2)
+```
+
+The histograms generated lack informativeness due to a considerable number of instances with zero values (0). These zeros signify months where the airline exclusively transported passengers without any freight or mail, reflecting a real scenario. In order to reduce the impact of extreme values (such as 0), I suggest to apply Zero-Inflated models (Zero-Inflated Negative Binomial (ZINB) in particular) for handling a dataset a large number of zeros.
+
+For fitting this model, I will use the 'pscl' package.
+
+```{r}
+# Rounding 'Mail_In' to the nearest integer (as this model works with integers only).
+airline_df$Rounded_Mail_In <- round(airline_df$Mail_In)
+
+# Fitting a zero-inflated negative binomial model with the rounded variable with the independent predictor variable - 'Passengers_In'.
+zinb_model <- zeroinfl(Rounded_Mail_In ~ Passengers_In, data = airline_df, dist = "negbin")
+
+# Summary of the model
+summary(zinb_model)
+```
+
+Let's interpret the key insights from the zero-inflated negative binomial model:
+
+* Excess Zeros:
+In our model, the excess zeros in the count of rounded mail items are not random; they are systematically influenced by certain factors.
+
+
+* Association with the Number of Passengers:
+
+The coefficient is 6.920e-05 for 'Passengers_In' 
+
+The presence of excess zeros is linked to the number of passengers.
+When the number of passengers increases, the odds of observing zero counts in rounded mail items also increase.
+
+
+* Zero-Inflated Distribution:
+
+Zero-Inflation Model Coefficients (binomial with logit link):
+The intercept for the zero-inflation model is estimated to be 2.725e+00.
+The coefficient for Passengers_In in the zero-inflation model is estimated to be -1.578e-03.
+
+This pattern suggests a zero-inflated distribution, where zero counts are not just random occurrences but are influenced by specific predictors.
+In this case, the excess zeros are associated with the predictor variable Passengers_In.
+
+Practically, this could mean that certain conditions related to the number of passengers lead to a higher likelihood of having no mail items (rounded to zero) in a given month, irrespective of other factors in the model.
+
+```{r}
+# Residuals vs. Fitted Values Plot
+plot(zinb_model$fitted.values, resid(zinb_model), 
+     xlab = "Fitted Values", ylab = "Residuals",
+     main = "Residuals vs. Fitted Values")
+```
+Analysing the plot, there is a point in Fitted values, that can be an outlier (< 60000). I suggest to identify this specific data point corresponding to the outlier in the fitted values, following these steps: 
+
+1. Identifying Outlier Index:
+
+```{r}
+# The fitted values are stored in zinb_model$fitted.values
+outlier_index <- which(zinb_model$fitted.values > 60000)
+
+# Print the index
+print(outlier_index)
+```
+
+2. Retrieving the corresponding rows from the dataset - 9611 and 9142:
+
+```{r}
+outlier_observation_1 <- airline_df[9611, ]
+outlier_observation_2 <- airline_df[9142, ]
+
+# Printing out the observations
+print(outlier_observation_1)
+print(outlier_observation_2)
+```
+
+After examining these observations, we can conclude that the observations are not outliers and represent a valid and realistic situation. 
+
+In addition, I will conduct a comprehensive analysis of the data for potential outliers by generating scatter plots. These plots will illustrate the relationship between 'Passengers_In' and 'Passengers_Out' and their impact on other variables. This exploration aims to understand the real-life dynamics, specifically how the presence of passengers influences the transportation of freight or mail.
+
+```{r, warning = FALSE}
+# Scatter plot for Mail_In vs Passengers_In
+plot10 <- ggplot(airline_df, aes(x = Mail_In, y = Passengers_In)) +
+  geom_point() +
+  labs(title = "Mail_In vs Passengers_In",
+       x = "Mail_In", y = "Passengers_In")
+
+# Scatter plot for Mail_Out vs Passengers_Out
+plot11 <- ggplot(airline_df, aes(x = Mail_Out, y = Passengers_Out)) +
+  geom_point() +
+  labs(title = "Mail_Out vs Passengers_Out",
+       x = "Mail_Out", y = "Passengers_Out")
+
+# Scatter plot for Freight_In vs Passengers_In
+plot12 <- ggplot(airline_df, aes(x = Freight_In, y = Passengers_In)) +
+  geom_point() +
+  labs(title = "Freight_In vs Passengers_In",
+       x = "Freight_In", y = "Passengers_In")
+
+# Scatter plot for Freight_Out vs Passengers_Out
+plot13 <- ggplot(airline_df, aes(x = Freight_Out, y = Passengers_Out)) +
+  geom_point() +
+  labs(title = "Freight_Out vs Passengers_Out",
+       x = "Freight_Out", y = "Passengers_Out")
+
+# Arranging plots in a 2x2 grid
+grid.arrange(plot10, plot11, plot12, plot13, ncol = 2)
+```
+
+In analyzing these plots, it becomes evident that there are no outliers present in these numeric variables, and the following observations can be made:
+
+* In relation to freight carriage, there is a positive correlation with the presence of passengers; as the number of passengers increases, so does the amount of freight carried.
+
+* Conversely, in the case of mail, there appears to be a negative correlation; fewer passengers seem to be associated with an increase in the volume of mail transported on the plane.
+
+
+# Reflective journal
+
+### Initial Plan
+
+My initial plan for this assessment was to effectively address and resolve data wrangling tasks using R programming. The task involved merging two datasets related to International Airlines Operations to and from Australia, spanning years from 1999 to 2008. The key objectives were to adhere to Tidy Data Principles, validate and clean the data, and apply necessary transformations to make it suitable for analysis.
+
+
+### Key Questions
+
+* How can I ensure that the merged dataset adheres to Tidy Data Principles?
+* What challenges might arise in terms of data types, variable names, and missing values?
+* How can I handle missing values and outliers effectively?
+* What insights can be gained from the data to inform the data preprocessing decisions?
+
+
+### Difficulties Encountered
+
+* Tidying Data Principles: 
+The initial dataset did not adhere to Tidy Data Principles. The "Month" variable contained both year and month values, and variable names required formatting. This posed a challenge in organizing the data appropriately.
+
+* Variable Types: 
+Converting variable types posed challenges, especially when dealing with dates and ensuring that the dataset structure was optimized for analysis.
+
+* Missing Values: 
+A significant number of missing values were present in numeric variables, requiring careful consideration of the impact on analysis and the choice of imputation methods.
+
+* Outliers: 
+Identifying and handling outliers, especially in variables like passenger counts and freight weights, required a nuanced approach to prevent bias in the dataset.
+
+
+### Solutions Used
+
+* Tidy Data Principles:
+I addressed the issues by modifying the "Month" variable, formatting variable names, and converting variables to appropriate types, ensuring adherence to Tidy Data Principles.
+
+* Missing Values:
+Employed multiple strategies, including imputation methods (mean and K-Nearest Neighbors), removing rows with extensive missing values, and creating missingness indicators.
+
+* Outliers:
+Utilized a Zero-Inflated Negative Binomial model to handle variables with a large number of zeros, and carefully examined potential outliers through scatter plots and statistical modeling.
+
+
+### Insights Gained:
+
+* Data Patterns:
+Discovered that the excess zeros in mail counts were systematically influenced by the number of passengers, suggesting a zero-inflated distribution.
+
+* Outliers: Recognized that seemingly extreme values in passenger counts were valid and aligned with real-world events, such as the introduction of new aircraft.
+
+* Relationships: Explored the relationships between passenger counts, freight weights, and mail movements, revealing interesting dynamics in how the presence of passengers influenced cargo transportation.
+
+
+### Reflective Conclusion:
+
+This assessment has been a comprehensive learning experience, providing insights into the complexities of real-world datasets. Navigating challenges in data tidying, handling missing values, and addressing outliers required a combination of technical skills and critical thinking. The iterative process of exploration, analysis, and decision-making was instrumental in arriving at effective solutions. Moving forward, this experience will undoubtedly contribute to my proficiency in R programming and data wrangling tasks, enhancing my ability to extract meaningful insights from diverse datasets.
+
+
+## Presentation link
+
+Include the link to your video walkthrough here. 
+
+<br>
+<br>
+
+## References
+
+BTRE (2023). International airline activity Table1 2004to2008 web.xls., https://www.bitre.gov.au/publications/ongoing/international_airline_activity-time_series.
+
+Singapore Company Registration. (2008). Page 1 of 1. https://www.singaporeair.com/saar5/pdf/Investor-Relations/Operating-Stats/opstats-jul08.pdf.
