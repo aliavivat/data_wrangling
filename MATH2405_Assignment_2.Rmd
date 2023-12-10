@@ -1,0 +1,665 @@
+---
+title: "Data Wrangling Assessment Task 2: Creating and pre-processing synthetic data"
+author: "Aliia Gismatullina s4051304"
+subtitle:
+output: 
+  html_document:
+    css: styles.css
+    df_print: paged
+  word_document: default
+  pdf: default
+---
+
+### Assessment Brief
+
+The assessment involves the generation and pre-processing of realistic synthetic data related to a selected globally well-known brand. Each step of the process will be explained in detail within the current R Markdown file.
+
+Another requirement is to saturate the dataset with a high degree of realism. Consequently, I will introduce some complexities to the dataset, which includes missing values and outliers.
+
+### Setup 
+```{r, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(MASS)
+library(e1071)
+library(openxlsx)
+```
+
+
+### Data Description 
+
+In the course of this assessment, I will undertake the generation and pre-processing of data related to Prada SpA Group, a globally recognized leader in luxury goods. Its products include leather goods, handbags, footwear, apparel, accessories, eye wear, and fragrances. Its brands include Prada itself, Miu Miu, Church's, Cas Shoe, and Pasticceria Marchesi. The company was founded by Mario Prada in 1913 and is headquartered in Milan, Italy. (Forbes Media LLC, https://www.forbes.com/companies/prada/?sh=734c60af43a6)
+
+I intend to formulate two distinct datasets specifically related to the Prada brand. The resultant data will prove invaluable for monitoring the evolution of Prada stores and conducting a comparative analysis of their geographical distribution with that of competitors.
+
+1. The first dataset will include 7 variables:
+
+* Store id - unique number for each store, 
+* Brand name - brands included in Prada SpA Group,
+* Store rating - range of numbers from 3 to 5,
+* Operational status - classified as either "Open" to denote current activity or "Closed" to indicate temporary or permanent cessation, 
+* Date opened - when the store was established,
+* Net income in EUR Million for 2021,
+* Net income in EUR Million for 2022.
+
+
+2. The second dataset will contain 9 variables:
+
+* Store id - unique ID to each store,
+* The store's address:
+  * Street, City, Country, Postal code,
+* Contact details:
+  * Email - the store's email address, and Phone number,
+* Store size in square meters - the area of the store, measured in square meters,
+* Floors - number of floors in the store, can be either 1 or 2.
+
+
+### Prada dataset No.1
+```{r}
+# Setting seed for reproducibility
+set.seed(125)
+
+# Creating variables for the first dataset
+brand_list <- c("Prada", "Miu Miu", "Church's", "Cas Shoe", "Pasticceria Marchesi") # Brands included in Prada SpA Group.
+store_rating <- c(3:5)
+date_opened_list <- c(seq(from = ymd("2010-01-01"), to = ymd("2022-01-10"), by = "days")) # For the purpose of this analysis, we will assume that the commencement of the current data collection initiative occurred in 2010.
+
+# This dataset will include 500 rows
+n_row <- 500
+
+# I will name the initial dataset as "prada_df_1".
+prada_df_1 <- 
+  data.frame (
+    store_id = sample(1:500, n_row), # replace = FALSE, as I want the store_id to be unique for each row.
+    brand = sample(brand_list, n_row, replace = TRUE),
+    store_rating = sample(store_rating, n_row, replace = TRUE, prob=c(0.1, 0.4, 0.5)), # For the data to be realistic, I have set the above proportions, considering Prada's widespread popularity, and therefore, a lower likelihood of encountering low ratings.
+    date_opened = sample(date_opened_list, n_row, replace = TRUE),
+    # The estimations of annual net sales were sourced from the website: GlobalData Plc, https://www.globaldata.com/data-insights/consumer/net-sales-of-prada-stores/ 
+    net_income_EUR_million_2021 = runif(n_row, 1, 300),
+    net_income_EUR_million_2022 = runif(n_row, 1, 300)
+  )
+
+# Ensuring the Operational status variable is "Closed" only when the net annual income for both 2021 and 2022 is equal or less than 40 million EUR.
+prada_df_1$operational_status = ifelse(prada_df_1$net_income_EUR_million_2021 <= 40 & prada_df_1$net_income_EUR_million_2022 <= 40, "Closed", "Open")
+
+head(prada_df_1)
+
+```
+Consequently, the initial synthetic dataset has been successfully generated. Let's examine the summary statistics to gain a comprehensive understanding of the dataset.
+
+```{r}
+summary(prada_df_1)
+```
+We can enhance the dataset by modifying some variable types:
+
+* Converting "operational_status" to a factor, given its two unique values - "Open" or "Closed".
+* Considering "brand" as a factor, as the 6 brands can be labelled.
+* "Store_rating" remains a numerical variable.
+* "Date_opened" should remain as a date.
+* "Net_income_EUR_million_2021" and "Net_income_EUR_million_2022" are already in double format.
+
+Implementing these modifications will contribute to a more structured and analytically useful dataset.
+
+```{r}
+prada_df_1$operational_status <- factor(prada_df_1$operational_status, levels = c("Open", "Closed"))
+prada_df_1$brand <- factor(prada_df_1$brand, levels = brand_list) # We have a variable brand_list with the names of all 6 brand, created on the 63rd line.
+
+str(prada_df_1)
+```
+
+
+### Prada dataset No.2
+
+For the second dataset, synthetic information such as addresses, phone numbers, and emails has been automatically generated using the website Corban Works, LLC. Fake Name Generator, https://www.fakenamegenerator.com/order.php. The fabricated data has been imported as a CSV file named "fake_data".
+
+Simultaneously, I will independently generate the store_id, email, postal code, country, store size in square meters, and floors variables.
+
+```{r}
+fake_data <- read_csv("FakeNameGenerator.com.csv", show_col_types = FALSE)
+
+set.seed(140)
+
+# Creating variables for the dataset
+phone_list <- fake_data$TelephoneNumber
+street_list <- fake_data$StreetAddress 
+city_list <- fake_data$City
+country_list <- c("France", "Italy", "USA", "Australia", "Belgium", "UK")
+email_list <- c("help@prada.com", "test_prada@prada.com", "factory_store@prada.com", "newsletter@prada.com", "sale@prada.com")
+
+n_row <- 500
+
+# The second dataset will be named as "prada_df_2".
+prada_df_2 <- 
+  data.frame (
+    store_id = sample(1:500, n_row), # replace = FALSE, as I want the store_id to be unique for each row.
+    street = sample(street_list, n_row), # Streets should also be unique, reflecting the reality that two stores of the same brand can hardly share the same street.
+    city = sample(city_list, n_row, replace = TRUE),
+    country = sample(country_list, n_row, replace = TRUE),
+    postal_code = sample(10000:99999, n_row, replace = TRUE), # Generating random 5-digit numbers.
+    email = sample(email_list, n_row, replace = TRUE),
+    phone_number = sample(phone_list, n_row), # Different stores would have different phone numbers.
+    store_size_m2 = runif(n_row, min = 50, max = 800)
+  )
+
+# Adding "floors" variable with a condition for a 2-floor building when the store size exceeds 450 square meters.
+prada_df_2$floors = ifelse(prada_df_2$store_size_m2 <= 450, 1, 2)
+
+head(prada_df_2)
+```
+The summary statistics will be examined to obtain a comprehensive understanding of the new dataset.
+
+```{r}
+summary(prada_df_2)
+```
+Let's review the data types of each variable and make adjustments, when required:
+
+* Street - can remain as a character, as no alternative data type can accurately represent this information.
+* City - similar situation.
+* Country - should be converted to a factor, as there are only 6 country stores included in this analysis. The countries can represent categories. 
+* Postal code - initially an integer, can be converted to a character, given that calculations such as mean, median, etc. are unnecessary for this variable.
+* Email - should remain as a character, as special characters involved make it unsuitable for any other data type.
+* Phone number - can be left as a character since no mathematical calculations will be performed with it.
+* Store size m2 - should remain as a double.
+* Floors - encompassing values 1 and 2, can be transformed into a factor since mathematical calculations with "floors" are not applicable in this context. What is more, floors represent levels, so keeping it as a factor can be useful for statistical modelling.
+
+```{r}
+prada_df_2$country <- factor(prada_df_2$country, levels = country_list) # country_list variable is defined in 126th line.
+prada_df_2$postal_code <- as.character(prada_df_2$postal_code)
+prada_df_2$floors <- factor(prada_df_2$floors)
+
+str(prada_df_2)
+```
+
+
+### Corrupting the data
+
+Before merging the two datasets together it is required to corrupt the data by adding some missing values and outliers.
+
+#### Creating missing values
+
+Missing values in data occur when there is no information for a particular variable or observation, often due to errors in data collection, non-response from participants, or system failures. Addressing them is crucial in data pre-processing for accurate analyses.
+
+```{r}
+# I will start with the first dataset (prada_df_1)
+n_missing_row = 3 # 3 values will be missing.
+set.seed(n_missing_row)
+missing_row_indexes = sample(1:n_row, n_missing_row) 
+print (prada_df_1[missing_row_indexes, ])
+
+# Now I will change the net_income_EUR_million_2021 values in these rows to NA.
+prada_df_1[missing_row_indexes, "net_income_EUR_million_2021"] <- NA 
+print(prada_df_1[which(is.na(prada_df_1$net_income_EUR_million_2021)), ])
+```
+
+Now I can apply the same principle for the second dataset (prada_df_2) to create missing values.
+
+```{r}
+# For this dataset I will have 4 missing values.
+n_missing_row_2 = 4
+set.seed(n_missing_row_2)
+missing_row_indexes_2 = sample(1:n_row, n_missing_row_2)
+print (prada_df_2[missing_row_indexes_2, ])
+
+# Here I will change the country values in these rows to NA.
+prada_df_2[missing_row_indexes_2, "country"] <- NA 
+print(prada_df_2[which(is.na(prada_df_2$country)), ])
+```
+
+
+#### Creating outliers in the data
+
+"Outliers" refer to data points within a dataset that differ significantly from the majority of the data. These points are considered unusual or exceptional in nature and can exert a notable influence on overall statistical analyses or modeling processes.
+
+I will start with the prada_df_1 dataset.
+
+```{r}
+n_outliers = 2 # I will be creating 2 outliers.
+set.seed(5)
+outlier_row_indexes = sample(1:n_row, n_outliers) 
+
+print(prada_df_1[outlier_row_indexes, ]) # Viewing the 2 randomly chosen rows.
+```
+
+```{r}
+# Setting the 2 store_rating values to extreme points.
+prada_df_1[outlier_row_indexes, "store_rating"] <- c(strtoi("-7"), strtoi("55")) 
+print(prada_df_1[outlier_row_indexes, ])
+```
+
+
+The same will be implemented for the second dataset (prada_df_2). Here I will create an outlier for the "store_size_m2" variable.
+
+```{r}
+n_outliers_2 = 1 # This dataset will have 1 outliers.
+set.seed(7)
+outlier_row_indexes_2 = sample(1:n_row, n_outliers_2)
+
+print(prada_df_2[outlier_row_indexes_2, ]) # Viewing the randomly chosen row.
+```
+
+```{r}
+# Setting the "store_size_m2" value to extreme points.
+prada_df_2[outlier_row_indexes_2, "store_size_m2"] <- strtoi("13049")
+print(prada_df_2[outlier_row_indexes_2, ])
+```
+
+### Merging the data
+
+To merge the two created above datasets, I will use the 'full_join' function from the 'dplyr' package to achieve a full outer join based on a common variable "store_id".
+
+```{r}
+merged_prada_df <- full_join(prada_df_1, prada_df_2, by = "store_id")
+
+head(merged_prada_df)
+```
+In this operation, all rows from both datasets are included in the result, matching rows where "store_id" is common and filling in missing values with 'NA' where there are no matches.
+
+###	Manipulating the data 
+
+As the next step, I would like to create 3 new variables based on existing variables using the 'mutate' function from the 'dplyr' package.
+
+There will be 2 new variables:
+* "total_net_income": the sum of net income from both years (2021 and 2022).
+* "is_high_rating": a binary variable indicating whether the store rating is high (4 or 5).
+
+```{r}
+merged_prada_df <- merged_prada_df %>%
+  mutate(
+    total_net_income = net_income_EUR_million_2021 + net_income_EUR_million_2022,
+    is_high_rating = store_rating %in% c(4, 5)
+  )
+
+# Let's view the updated dataset
+head(merged_prada_df)
+```
+
+### Understanding the data
+
+```{r}
+glimpse(merged_prada_df)
+```
+Our merged dataset contains 500 rows and 17 columns, with all the variables in the correct data types.
+
+
+To get an overview of the central tendency, dispersion, all the NA's and distribution of the data I will use 'summary' function.
+
+```{r}
+summary(merged_prada_df)
+```
+
+Here's a summary of the key information from the dataset:
+
+* Store Information:
+  * There are 500 stores (rows) with IDs ranging from 1 to 500.
+
+* Store Ratings:
+  * The store ratings range from -7 to 55, with a mean rating of approximately 4.46.
+  * The majority of stores have high ratings, as indicated by the mean and median values.
+
+* Net Income (in million EUR) for 2021 and 2022:
+  * Net income for 2021 ranges from 1.889 to 299.827 million EUR.
+  * Net income for 2022 ranges from 1.117 to 299.25 million EUR.
+  * There are three missing values in the net income for 2021 and 2022.
+
+* Operational Status:
+  * The majority of stores (493 out of 500) are marked as "Open".
+
+* Geographical Information:
+  * There are 4 missing values in the country variable.
+
+* Store Size:
+  * The store size in square meters ranges from 0 to 13,049, with an average size of approximately 467.3 square meters.
+  * There are three missing values in the store size.
+  
+* Number of Floors:
+  * Most stores (253 out of 500) are classified as having 2 floors.
+
+* High Rating Flag:
+  * The "is_high_rating" variable indicates whether a store has a high rating (TRUE) or not (FALSE).
+  * The majority of stores (443 out of 500) are marked as having a high rating.
+
+
+
+###	Scan I for Missing Values
+
+I have used the 'summary()' earlier and received some information about the missing values. To be more precise I will apply the 'colSums()' in combination with the 'is.na()' function, which calculates the total number of missing values for each variable.
+
+```{r}
+missing_values <- colSums(is.na(merged_prada_df))
+
+print(missing_values)
+```
+Here's a breakdown of the missing values:
+
+* "net_income_EUR_million_2021": 3 missing values
+* "country": 4 missing values
+* "total_net_income": 3 missing values
+
+The choice of a technique to deal with missing values depends on the specific characteristics of each variable. So let's go one by one:
+
+* "net_income_EUR_million_2021" and "total_net_income:
+  * Since these variables are numeric, we can impute the missing values with the mean or median of the respective variable to preserve the overall distribution.
+
+```{r}
+# Imputing missing values for the net_income_EUR_million_2021.
+merged_prada_df$net_income_EUR_million_2021 <- ifelse(is.na(merged_prada_df$net_income_EUR_million_2021),
+                                                      mean(merged_prada_df$net_income_EUR_million_2021, na.rm = TRUE),
+                                                      merged_prada_df$net_income_EUR_million_2021)
+
+# Imputing missing values for the total_net_income.
+merged_prada_df$total_net_income <- ifelse(is.na(merged_prada_df$total_net_income),
+                                            mean(merged_prada_df$total_net_income, na.rm = TRUE),
+                                            merged_prada_df$total_net_income)
+
+summary(merged_prada_df$net_income_EUR_million_2021)
+```
+
+
+* country:
+  * As the "country" is a categorical variable, the missing values will be handled with the mode (most frequent country in the dataset).
+
+```{r}
+# Handling missing values for categorical variable 'country' with mode
+merged_prada_df$country <- ifelse(is.na(merged_prada_df$country),
+                                  names(sort(table(merged_prada_df$country), decreasing = TRUE)[1]),
+                                  merged_prada_df$country)
+
+summary(merged_prada_df$country)
+```
+
+Let's reconfirm the changes have been applied.
+
+```{r}
+missing_values_v2 <- colSums(is.na(merged_prada_df))
+
+print(missing_values_v2)
+```
+As we can see, all the missing values have been successfully imputed. 
+
+
+###	Scan II for Outliers
+
+Outliers generally occur in numeric variables, and they are particularly relevant in continuous or ratio data types. So, first of all, we will focus on the numeric variables: 
+* store_rating, 
+* store_size_m2,
+* net_income_EUR_million_2021, 
+* net_income_EUR_million_2022, 
+* total_net_income.
+
+To visually inspect the distribution of values and identify potential outliers, I will create individual box plots for the 3 inclome related variables, where each box plot provides a visual summary of the distribution, including the median, quartiles, and potential outliers.
+
+```{r}
+# Creating a multi-panel plot with box plots
+par(mfrow = c(1, 3))
+
+# Box plot for net_income_EUR_million_2021
+boxplot(merged_prada_df$net_income_EUR_million_2021, main="Net Income (2021)", ylab="EUR Million")
+
+# Box plot for net_income_EUR_million_2022
+boxplot(merged_prada_df$net_income_EUR_million_2022, main="Net Income (2022)", ylab="EUR Million")
+
+# Box plot for total_net_income
+boxplot(merged_prada_df$total_net_income, main="Total Net Income", ylab="EUR Million")
+
+# Resetting the layout to a single panel
+par(mfrow = c(1, 1))
+
+```
+I can make the following conclusion based on the visualization:
+
+* Symmetry and Skewness
+A symmetrical box for Net Income (2021), Net Income (2022) and Total Net Income suggests a relatively uniform distribution.
+
+* Central Tendency
+  * A median for the 3 variables is positioned relatively in the middle.
+
+* Spread of Data
+  * The box itself represents IQR - the middle 50% of the data. All the 3 plots have a valid box length. 
+  
+Based on the above, it is clear that there are no outliers in these 3 variables.
+
+
+Moving on to the store_size_m2, I will create a box plot to visualize the distribution of store sizes.
+
+```{r}
+# Box plot for store_size_m2
+boxplot(merged_prada_df$store_size_m2, main="Store Size Distribution", ylab="Store Size (m²)", col="lightblue")
+```
+
+
+Looking at the box plot it is clear that the box is asymmetric, and there is a whisker far above the box, suggest the existence of at least one outlier. To further investigate the outlier, I will use the Z-score method. 
+
+```{r}
+# Calculating Z-score for store_size_m2
+z_scores_size <- scale(merged_prada_df$store_size_m2)
+
+# Identifying outliers based on Z-score
+outliers_size <- which(abs(z_scores_size) > 2)
+
+# Displaying the values of outliers
+print(merged_prada_df$store_size_m2[outliers_size])
+```
+The Z-score suggests that the value of the outlier is 13049, which clearly cannot be a real value for a store size in square meters, which means it needs to addressed. Here I will cap the oulier at the fence.
+
+```{r}
+# Defining the cap function
+cap <- function(x, threshold) {
+  x[x > threshold] <- threshold
+  x
+}
+
+# Setting the threshold for capping (I chose a value 800, which is closer to the Q3 - 625).
+threshold <- 800
+
+# Capping outliers in store_size_m2.
+merged_prada_df$store_size_m2_capped <- cap(merged_prada_df$store_size_m2, threshold)
+
+# Box plot for store_size_m2_capped to visually see the changes.
+boxplot(merged_prada_df$store_size_m2_capped, main="Store Size Distribution (Capped)", ylab="Store Size (m²)", col="lightblue")
+
+```
+
+
+As there is only 1 outlier in the "store_size_m2" variable, I find it relevant to replace the original variable with the capped values, so that further analyses is not influenced by the presence of the outlier. 
+
+```{r}
+# Replacing the original store_size_m2 with capped values
+merged_prada_df$store_size_m2 <- merged_prada_df$store_size_m2_capped
+
+glimpse(merged_prada_df$store_size_m2)
+```
+
+
+
+Last but not least, "store_rating" variable. To scan for outliers, I will use the Z-score.
+
+```{r}
+z_scores_rating <- scale(merged_prada_df$store_rating)
+
+# Identifying outliers based on Z-score
+outliers_rating <- which(abs(z_scores_rating) > 2)
+
+# Let's see the values of outliers
+print(merged_prada_df$store_rating[outliers_rating])
+```
+
+Indeed, the extremely low rating of -7 and exceptionally high value of 55 cannot be the actual rating of the store, indicating the store_rating has outliers, that needs to be addressed. To visualize the distribution and identify potential outliers I will create a histogram.
+
+```{r}
+# Plotting a histogram for store_rating
+hist(merged_prada_df$store_rating, breaks = 30, col = "skyblue", main = "Histogram of store_rating", xlab = "store_rating")
+```
+
+We will address these outliers using the following steps: 
+* calculating quartiles, 
+* identifying outliers based on fences, 
+* replacing outliers with the mean excluding the upper and lower fences.
+
+```{r}
+# Calculating Q1, Q3 and IQR
+q1 <- quantile(merged_prada_df$store_rating, probs = 0.25)
+q3 <- quantile(merged_prada_df$store_rating, probs = 0.75)
+iqr <- q3 - q1
+
+# Defining Upper and Lower Fences
+lower_fence <- q1 - (1.5 * iqr)
+upper_fence <- q3 + (1.5 * iqr)
+
+# Identifying the Outliers
+outlier_rows <- merged_prada_df$store_rating < lower_fence | merged_prada_df$store_rating > upper_fence
+
+# Capping the Outliers
+mean_without_outliers <- mean(merged_prada_df$store_rating[!outlier_rows], na.rm = TRUE)
+merged_prada_df$store_rating_capped <- ifelse(outlier_rows, mean_without_outliers, merged_prada_df$store_rating)
+
+# Summary statistics for store_rating_capped
+summary(merged_prada_df$store_rating_capped)
+
+# Unique values and the data type for store_rating_capped
+unique(merged_prada_df$store_rating_capped)
+class(merged_prada_df$store_rating_capped)
+```
+The summary above confirmes that the outliers have been successfully imputed. What I will do next is to convert the numeric into integer for the rating variable to look the same as the previous one. Furthermore, I will replace the original store_rating with the capped values to ensure that extreme values are adjusted to be within a reasonable range.
+
+```{r}
+# Converting the variable back to integer
+merged_prada_df$store_rating_capped <- as.integer(merged_prada_df$store_rating_capped)
+
+# Replacing the original store_rating with capped values
+merged_prada_df$store_rating <- merged_prada_df$store_rating_capped
+
+glimpse(merged_prada_df$store_rating)
+```
+
+
+To visually see and confirm the changes, I will create a histogram for the updates "store_rating" variable.
+
+```{r}
+ggplot(merged_prada_df, aes(x = store_rating)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Store Ratings",
+       x = "Store Rating",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+The histogram above confirms that the outliers have been successfully handled and all the values are relevant (in the range betweet 3 to 5).
+
+Consequently, all the numeric variables of the dataset have been scanned, leading to the identification and addressing of all the outliers.
+
+
+###	Data Transformation 
+
+Before performing any data transformations let's explore and understand the characteristics of the data first. Continuous numeric variables that may benefit from transformation. In this case, they are:
+
+* net_income_EUR_million_2021,
+* net_income_EUR_million_2022,
+* store_size_m2,
+* total_net_income.
+
+Histograms can be a great way to start the examination.
+
+```{r}
+# Creating a histogram of the raw data
+
+# 2x2 layout for four histograms
+par(mfrow = c(2, 2))
+
+hist(merged_prada_df$net_income_EUR_million_2021, main = "Histogram of Net Income in 2021", xlab = "Net Income (EUR million)", col = "lightblue", border = "black")
+
+hist(merged_prada_df$net_income_EUR_million_2022, main = "Histogram of Net Income in 2022", xlab = "Net Income (EUR million)", col = "lightblue", border = "black")
+
+hist(merged_prada_df$total_net_income, main = "Histogram of Total Net Income", xlab = "Net Income (EUR million)", col = "lightblue", border = "black")
+
+hist(merged_prada_df$store_size_m2, main = "Store size", xlab = "Size in square meters", col = "lightblue", border = "black")
+
+# Resetting the layout to default (1x1)
+par(mfrow = c(1, 1))
+```
+* The "total_net_income" variable exhibits an ideal uniform distribution, meaning data transformation is not required.
+
+
+* When it comes to the other variables, the conclusion is not as obvious. In this case, I would like to use the 'skewness' function from the 'e1071' package to check for skewness.
+
+```{r}
+# Calculating skewness for the net_income_EUR_million_2021
+skewness_value <- skewness(merged_prada_df$net_income_EUR_million_2021)
+print(skewness_value)
+```
+A value close to 0 indicates the symmetric distribution of values for "net_income_EUR_million_2021."
+
+```{r}
+# Calculating skewness for the net_income_EUR_million_2022
+skewness_value <- skewness(merged_prada_df$net_income_EUR_million_2022)
+print(skewness_value)
+```
+A negative value -0.0352958 for the "net_income_EUR_million_2021" shows that the distribution is slighly left-skewed, however it is still very close to 0. 
+
+```{r}
+# Calculating skewness for the store_size_m2
+skewness_value <- skewness(merged_prada_df$store_size_m2)
+print(skewness_value)
+```
+When it comes to the "store_size_m2", -0.1223084 value indicates a slight left skewness. We can undertake logarithmic transformation for a better understanding of this variable.
+
+```{r}
+# Logarithmic transformation - I have used 'log1p' instead of 'log' to avoid issues with 0 values
+log_store_size <- log1p(merged_prada_df$store_size_m2)
+
+# Calculating skewness for the transformed variable using the 'skewness' function
+skewness_value_transformed <- skewness(log_store_size)
+print(skewness_value_transformed)
+
+# Creating a histogram of the transformed variable
+hist(log_store_size, main = "Log-Transformed store_size_m2", col = "lightblue", border = "black")
+```
+
+The performed log transformation compressed the scale, emphasizing relative differences among smaller values, which makes it easier to discern patterns and variations. It provides transformed representation that reveals patterns, relationships, and variations more clearly - spesifically, we can see that the Prada stores in the dataset tend to be bigger and have larger sizes.
+
+
+### Summary
+
+```{r}
+# Summary Statistics for Numeric Variables
+numeric_summary <- summary(merged_prada_df[, sapply(merged_prada_df, is.numeric)])
+
+# Summary Statistics for Categorical Variables
+categorical_summary <- sapply(merged_prada_df[, sapply(merged_prada_df, is.factor)], table)
+
+# Numeric and Categorical Summaries combined
+final_summary <- list(Numeric_Variables = numeric_summary, Categorical_Variables = categorical_summary)
+
+print(final_summary)
+```
+To conclude with, I generated and pre-processed synthetic data representative of a globally known luxury brand, Prada. Through a step-by-step approach, I crafted realistic datasets, introduced missing values and outliers, and applied various transformations to enhance the realism of the data. It was focused on Prada's store expansion and geographical presence, which I believe are crucial aspects for monitoring and competitive analysis. 
+
+This assessment serves as a foundation for understanding the complexities of data generation, pre-processing, and analysis, offering a glimpse into the potential applications of these techniques in a business context.
+
+
+```{r}
+# Create a new workbook
+wb <- createWorkbook()
+
+# Add prada_df_1 to Sheet1
+addWorksheet(wb, "prada_df_1")
+writeData(wb, "prada_df_1", prada_df_1)
+
+# Add prada_df_2 to Sheet2
+addWorksheet(wb, "prada_df_2")
+writeData(wb, "prada_df_2", prada_df_2)
+
+# Add merged_prada_df to Sheet3
+addWorksheet(wb, "merged_prada_df")
+writeData(wb, "merged_prada_df", merged_prada_df)
+
+# Save the workbook to an Excel file
+saveWorkbook(wb,  "~/Desktop/Data Wrangling/Assessment2/prada_dfs.xlsx")
+```
+
+### References
+
+(2023) 'Prada Profile Page', 'Prada Company Stats', Forbes Media LLC https://www.forbes.com/companies/prada/?sh=734c60af43a6
+
+(2023) 'Net Sales of Prada Stores (H1 2020 – H1 2022, EUR Million)', GlobalData Plc https://www.globaldata.com/data-insights/consumer/net-sales-of-prada-stores/
+
+(2023) 'Order Bulk Identities', Corban Works, LLC. Fake Name Generator https://www.fakenamegenerator.com/order.php
