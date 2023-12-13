@@ -1,6 +1,6 @@
 ---
 title: "Data Wrangling Assessment Task 2: Creating and pre-processing synthetic data"
-author: "Aliia Gismatullina s4051304"
+author: ""
 subtitle:
 output: 
   html_document:
