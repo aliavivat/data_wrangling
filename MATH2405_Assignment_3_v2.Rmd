@@ -1,6 +1,6 @@
 ---
 title: "Data Wrangling Assessment Task 3: Dataset challenge"
-author: "Aliia Gismatullina s4051304"
+author: ""
 subtitle: 
 output: 
   word_document: default
