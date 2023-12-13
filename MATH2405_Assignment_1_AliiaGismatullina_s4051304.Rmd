@@ -1,6 +1,6 @@
 ---
 title: "MATH2405 TP4, 2023"
-author: "Aliia Gismatullina s4051304"
+author: ""
 subtitle: Assignment 1
 output:
   html_document:
